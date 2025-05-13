@@ -1,0 +1,97 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>GoWay - Карта Астаны</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 90vh; }
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    .controls {
+      padding: 10px;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>Тип передвижения:
+      <select id="travelMode">
+        <option value="foot-walking">Пешком</option>
+        <option value="driving-car">На машине</option>
+        <option value="driving-hgv">На автобусе</option>
+      </select>
+    </label>
+    <input type="text" id="destination" placeholder="Введите адрес назначения" />
+    <button onclick="route()">Проложить маршрут</button>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script>
+    const apiKey = 'AIzaSyArLRHdatabSv8a2IDr_-u6qvUF2ZLIHbY';
+
+    let map = L.map('map').setView([51.1605, 71.4704], 13); // Астана
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let userMarker = null;
+    let routeLayer = null;
+
+    navigator.geolocation.getCurrentPosition(position => {
+      const { latitude, longitude } = position.coords;
+      userMarker = L.marker([latitude, longitude]).addTo(map)
+        .bindPopup("Вы здесь").openPopup();
+      map.setView([latitude, longitude], 14);
+    }, () => {
+      alert("Геолокация отключена.");
+    });
+
+    async function route() {
+      const destination = document.getElementById('destination').value;
+      const mode = document.getElementById('travelMode').value;
+
+      if (!userMarker) {
+        alert("Геолокация ещё не получена.");
+        return;
+      }
+
+      const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination + ', Astana')}`;
+      const res = await fetch(geocodeUrl);
+      const data = await res.json();
+      if (data.length === 0) {
+        alert("Место не найдено.");
+        return;
+      }
+
+      const destLat = parseFloat(data[0].lat);
+      const destLon = parseFloat(data[0].lon);
+      const userLatLng = userMarker.getLatLng();
+
+      const url = `https://api.openrouteservice.org/v2/directions/${mode}?api_key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coordinates: [
+            [userLatLng.lng, userLatLng.lat],
+            [destLon, destLat]
+          ]
+        })
+      });
+
+      const json = await response.json();
+      const routeCoords = json.features[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.polyline(routeCoords, { color: 'blue' }).addTo(map);
+      map.fitBounds(routeLayer.getBounds());
+    }
+  </script>
+</body>
+</html>
